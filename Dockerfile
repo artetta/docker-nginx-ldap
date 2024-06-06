@@ -3,6 +3,9 @@ FROM nginx:1.27.0-alpine AS base
 # Create a builder image.
 FROM base AS builder
 
+ENV MORE_HEADERS_VERSION=0.37
+ENV MORE_HEADERS_GITREPO=openresty/headers-more-nginx-module
+
 # Make our shell more strict during the build phase.
 SHELL ["/bin/sh", "-exo", "pipefail", "-c"]
 
@@ -28,10 +31,12 @@ RUN apk add --no-cache \
 
 # Download source files for the current Nginx and the LDAP module, and then
 # unpack them to separate folders.
-RUN mkdir -p /tmp/src/nginx \
+RUN mkdir -p /tmp/src/nginx /tmp/src/extra_module \
     && curl -fsSL https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz | tar vxz --strip=1 -C /tmp/src/nginx \
     && curl -fsSL https://github.com/kvspb/nginx-auth-ldap/archive/master.zip -o /tmp/nginx-auth-ldap-master.zip \
-    && unzip -d /tmp/src /tmp/nginx-auth-ldap-master.zip
+    && wget "https://github.com/${MORE_HEADERS_GITREPO}/archive/v${MORE_HEADERS_VERSION}.tar.gz" -O /tmp/extra_module.tar.gz \
+    && unzip -d /tmp/src /tmp/nginx-auth-ldap-master.zip \
+    && tar -xzC /tmp/src/extra_module -f /tmp/extra_module.tar.gz && ls -lah /tmp/src/extra_module
 
 # Navigate to Nignx's source folder, and then build the LDAP module with the
 # same compilation flags as the currently active Nginx installation in order to
@@ -39,7 +44,7 @@ RUN mkdir -p /tmp/src/nginx \
 # https://github.com/openresty/docker-openresty/issues/114
 RUN cd /tmp/src/nginx && \
     CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') && \
-    sh -c "./configure --with-compat ${CONFARGS} --add-dynamic-module=/tmp/src/nginx-auth-ldap-master" && \
+    sh -c "./configure --with-compat ${CONFARGS} --add-dynamic-module=/tmp/src/nginx-auth-ldap-master --add-dynamic-module=/tmp/src/extra_module/*" && \
     make modules
 
 
